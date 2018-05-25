@@ -7,7 +7,10 @@ class ListTrainingTests(ChatBotTestCase):
 
     def setUp(self):
         super(ListTrainingTests, self).setUp()
-        self.chatbot.set_trainer(ListTrainer)
+        self.chatbot.set_trainer(
+            ListTrainer,
+            show_training_progress=False
+        )
 
     def test_training_adds_statements(self):
         """
@@ -46,6 +49,10 @@ class ListTrainingTests(ChatBotTestCase):
         statements = self.chatbot.storage.filter(
             in_response_to__contains="Do you like my hat?"
         )
+
+        self.assertIsLength(statements, 1)
+        self.assertIsLength(statements[0].in_response_to, 1)
+
         response = statements[0].in_response_to[0]
 
         self.assertEqual(response.occurrence, 2)
@@ -107,6 +114,38 @@ class ListTrainingTests(ChatBotTestCase):
             u'≁ ≂ ≃ ≄ ⋍ ≅ ≆ ≇ ≈ ≉ ≊ ≋ ≌ ⩯ ⩰ ⫏ ⫐ ⫑ ⫒ ⫓ ⫔ ⫕ ⫖',
             u'¬ ⫬ ⫭ ⊨ ⊭ ∀ ∁ ∃ ∄ ∴ ∵ ⊦ ⊬ ⊧ ⊩ ⊮ ⊫ ⊯ ⊪ ⊰ ⊱ ⫗ ⫘',
             u'∧ ∨ ⊻ ⊼ ⊽ ⋎ ⋏ ⟑ ⟇ ⩑ ⩒ ⩓ ⩔ ⩕ ⩖ ⩗ ⩘ ⩙ ⩚ ⩛ ⩜ ⩝ ⩞ ⩟ ⩠ ⩢',
+        ]
+
+        self.chatbot.train(conversation)
+
+        response = self.chatbot.get_response(conversation[1])
+
+        self.assertEqual(response, conversation[2])
+
+    def test_training_with_emoji_characters(self):
+        """
+        Ensure that the training method adds statements containing emojis.
+        """
+        conversation = [
+            u'Hi, how are you? 😃',
+            u'I am just dandy 👍',
+            u'Superb! 🎆'
+        ]
+
+        self.chatbot.train(conversation)
+
+        response = self.chatbot.get_response(conversation[1])
+
+        self.assertEqual(response, conversation[2])
+
+    def test_training_with_unicode_bytestring(self):
+        """
+        Test training with an 8-bit bytestring.
+        """
+        conversation = [
+            'Hi, how are you?',
+            '\xe4\xbd\xa0\xe5\xa5\xbd\xe5\x90\x97',
+            'Superb!'
         ]
 
         self.chatbot.train(conversation)

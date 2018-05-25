@@ -1,5 +1,4 @@
 import logging
-import os
 
 
 class StorageAdapter(object):
@@ -17,24 +16,22 @@ class StorageAdapter(object):
         self.adapter_supports_queries = True
         self.base_query = None
 
-    @property
-    def Statement(self):
+    def get_model(self, model_name):
         """
-        Create a storage-aware statement.
+        Return the model class for a given model name.
         """
 
-        if 'DJANGO_SETTINGS_MODULE' in os.environ:
-            django_project = __import__(os.environ['DJANGO_SETTINGS_MODULE'])
-            if 'use_django_models' in django_project.settings.CHATTERBOT:
-                if django_project.settings.CHATTERBOT['use_django_models'] is True:
-                    from django.apps import apps
-                    Statement = apps.get_model(django_project.settings.CHATTERBOT['django_app_name'], 'Statement')
-                    return Statement
+        # The string must be lowercase
+        model_name = model_name.lower()
 
-        from chatterbot.conversation.statement import Statement
-        statement = Statement
-        statement.storage = self
-        return statement
+        kwarg_model_key = '%s_model' % (model_name, )
+
+        if kwarg_model_key in self.kwargs:
+            return self.kwargs.get(kwarg_model_key)
+
+        get_model_method = getattr(self, 'get_%s_model' % (model_name, ))
+
+        return get_model_method()
 
     def generate_base_query(self, chatterbot, session_id):
         """
@@ -89,6 +86,31 @@ class StorageAdapter(object):
         """
         raise self.AdapterMethodNotImplementedError(
             'The `update` method is not implemented by this adapter.'
+        )
+
+    def get_latest_response(self, conversation_id):
+        """
+        Returns the latest response in a conversation if it exists.
+        Returns None if a matching conversation cannot be found.
+        """
+        raise self.AdapterMethodNotImplementedError(
+            'The `get_latest_response` method is not implemented by this adapter.'
+        )
+
+    def create_conversation(self):
+        """
+        Creates a new conversation.
+        """
+        raise self.AdapterMethodNotImplementedError(
+            'The `create_conversation` method is not implemented by this adapter.'
+        )
+
+    def add_to_conversation(self, conversation_id, statement, response):
+        """
+        Add the statement and response to the conversation.
+        """
+        raise self.AdapterMethodNotImplementedError(
+            'The `add_to_conversation` method is not implemented by this adapter.'
         )
 
     def get_random(self):

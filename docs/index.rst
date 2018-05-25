@@ -67,13 +67,12 @@ Contents:
    filters/index
    chatterbot
    conversations
-   sessions
+   comparisons
    utils
    corpus
    django/index
    faq
    commands
-   encoding
    development
    glossary
 

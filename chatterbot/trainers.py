@@ -2,6 +2,7 @@ import logging
 import os
 import sys
 from .conversation import Statement, Response
+from . import utils
 
 
 class Trainer(object):
@@ -10,12 +11,28 @@ class Trainer(object):
     """
 
     def __init__(self, storage, **kwargs):
+        self.chatbot = kwargs.get('chatbot')
         self.storage = storage
         self.logger = logging.getLogger(__name__)
+        self.show_training_progress = kwargs.get('show_training_progress', True)
+
+    def get_preprocessed_statement(self, input_statement):
+        """
+        Preprocess the input statement.
+        """
+
+        # The chatbot is optional to prevent backwards-incompatible changes
+        if not self.chatbot:
+            return input_statement
+
+        for preprocessor in self.chatbot.preprocessors:
+            input_statement = preprocessor(self, input_statement)
+
+        return input_statement
 
     def train(self, *args, **kwargs):
         """
-        This class must be overridden by a class the inherits from 'Trainer'.
+        This method must be overridden by a child class.
         """
         raise self.TrainerInitializationException()
 
@@ -24,10 +41,14 @@ class Trainer(object):
         Return a statement if it exists.
         Create and return the statement if it does not exist.
         """
-        statement = self.storage.find(statement_text)
+        temp_statement = self.get_preprocessed_statement(
+            Statement(text=statement_text)
+        )
+
+        statement = self.storage.find(temp_statement.text)
 
         if not statement:
-            statement = Statement(statement_text)
+            statement = Statement(temp_statement.text)
 
         return statement
 
@@ -60,10 +81,10 @@ class Trainer(object):
         Create a file from the database that can be used to
         train other chat bots.
         """
-        from jsondb.db import Database
-        database = Database(file_path)
-        export = {'export': self._generate_export_data()}
-        database.data(dictionary=export)
+        import json
+        export = {'conversations': self._generate_export_data()}
+        with open(file_path, 'w+') as jsonfile:
+            json.dump(export, jsonfile, ensure_ascii=False)
 
 
 class ListTrainer(Trainer):
@@ -79,7 +100,13 @@ class ListTrainer(Trainer):
         """
         previous_statement_text = None
 
-        for text in conversation:
+        for conversation_count, text in enumerate(conversation):
+            if self.show_training_progress:
+                utils.print_progress_bar(
+                    'List Trainer',
+                    conversation_count + 1, len(conversation)
+                )
+
             statement = self.get_or_create(text)
 
             if previous_statement_text:
@@ -115,12 +142,22 @@ class ChatterBotCorpusTrainer(Trainer):
 
             corpora = self.corpus.load_corpus(corpus_path)
 
-            for corpus in corpora:
-                for conversation in corpus:
+            corpus_files = self.corpus.list_corpus_files(corpus_path)
+            for corpus_count, corpus in enumerate(corpora):
+                for conversation_count, conversation in enumerate(corpus):
+
+                    if self.show_training_progress:
+                        utils.print_progress_bar(
+                            str(os.path.basename(corpus_files[corpus_count])) + ' Training',
+                            conversation_count + 1,
+                            len(corpus)
+                        )
+
                     previous_statement_text = None
 
                     for text in conversation:
                         statement = self.get_or_create(text)
+                        statement.add_tags(corpus.categories)
 
                         if previous_statement_text:
                             statement.add_response(
@@ -138,6 +175,8 @@ class TwitterTrainer(Trainer):
 
     :param random_seed_word: The seed word to be used to get random tweets from the Twitter API.
                              This parameter is optional. By default it is the word 'random'.
+    :param twitter_lang: Language for results as ISO 639-1 code.
+                         This parameter is optional. Default is None (all languages).
     """
 
     def __init__(self, storage, **kwargs):
@@ -146,6 +185,7 @@ class TwitterTrainer(Trainer):
 
         # The word to be used as the first search term when searching for tweets
         self.random_seed_word = kwargs.get('random_seed_word', 'random')
+        self.lang = kwargs.get('twitter_lang')
 
         self.api = TwitterApi(
             consumer_key=kwargs.get('twitter_consumer_key'),
@@ -154,7 +194,7 @@ class TwitterTrainer(Trainer):
             access_token_secret=kwargs.get('twitter_access_token_secret')
         )
 
-    def random_word(self, base_word):
+    def random_word(self, base_word, lang=None):
         """
         Generate a random word using the Twitter API.
 
@@ -164,10 +204,10 @@ class TwitterTrainer(Trainer):
         new set of results.
         """
         import random
-        random_tweets = self.api.GetSearch(term=base_word, count=5)
+        random_tweets = self.api.GetSearch(term=base_word, count=5, lang=lang)
         random_words = self.get_words_from_tweets(random_tweets)
         random_word = random.choice(list(random_words))
-        tweets = self.api.GetSearch(term=random_word, count=5)
+        tweets = self.api.GetSearch(term=random_word, count=5, lang=lang)
         words = self.get_words_from_tweets(tweets)
         word = random.choice(list(words))
         return word
@@ -197,10 +237,10 @@ class TwitterTrainer(Trainer):
         statements = []
 
         # Generate a random word
-        random_word = self.random_word(self.random_seed_word)
+        random_word = self.random_word(self.random_seed_word, self.lang)
 
         self.logger.info(u'Requesting 50 random tweets containing the word {}'.format(random_word))
-        tweets = self.api.GetSearch(term=random_word, count=50)
+        tweets = self.api.GetSearch(term=random_word, count=50, lang=self.lang)
         for tweet in tweets:
             statement = Statement(tweet.text)
 

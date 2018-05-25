@@ -13,19 +13,23 @@ AUTHOR_EMAIL = CHATTERBOT.__email__
 URL = CHATTERBOT.__url__
 DESCRIPTION = CHATTERBOT.__doc__
 
+with open('README.md') as f:
+    LONG_DESCRIPTION = f.read()
+
 with open('requirements.txt') as requirements:
     REQUIREMENTS = requirements.readlines()
-
-with open('README.rst') as readme:
-    README = readme.read()
 
 setup(
     name='ChatterBot',
     version=VERSION,
     url=URL,
     download_url='{}/tarball/{}'.format(URL, VERSION),
+    project_urls={
+        'Documentation': 'https://chatterbot.readthedocs.io',
+    },
     description=DESCRIPTION,
-    long_description=README,
+    long_description=LONG_DESCRIPTION,
+    long_description_content_type='text/markdown',
     author=AUTHOR,
     author_email=AUTHOR_EMAIL,
     packages=[
@@ -34,8 +38,6 @@ setup(
         'chatterbot.output',
         'chatterbot.storage',
         'chatterbot.logic',
-        'chatterbot.corpus',
-        'chatterbot.conversation',
         'chatterbot.ext',
         'chatterbot.ext.sqlalchemy_app',
         'chatterbot.ext.django_chatterbot',
@@ -46,6 +48,7 @@ setup(
     package_dir={'chatterbot': 'chatterbot'},
     include_package_data=True,
     install_requires=REQUIREMENTS,
+    python_requires='>=2.7, <4',
     license='BSD',
     zip_safe=True,
     platforms=['any'],
@@ -65,6 +68,7 @@ setup(
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.4',
         'Programming Language :: Python :: 3.5',
+        'Programming Language :: Python :: 3.6',
     ],
     test_suite='tests',
     tests_require=['mock']

@@ -1,15 +1,31 @@
-# -*- coding: utf-8 -*-
-from .response import Response
-from datetime import datetime
+class StatementMixin(object):
+    """
+    This class has shared methods used to
+    normalize different statement models.
+    """
+
+    def get_tags(self):
+        """
+        Return the list of tags for this statement.
+        """
+        return self.tags
+
+    def add_tags(self, tags):
+        """
+        Add a list of strings to the statement as tags.
+        """
+        for tag in tags:
+            self.tags.append(tag)
 
 
-class Statement(object):
+class Statement(StatementMixin):
     """
     A statement represents a single spoken entity, sentence or
     phrase that someone can say.
     """
 
     def __init__(self, text, **kwargs):
+        import sys
 
         # Try not to allow non-string types to be passed to statements
         try:
@@ -17,11 +33,16 @@ class Statement(object):
         except UnicodeEncodeError:
             pass
 
-        self.text = text
-        self.in_response_to = kwargs.pop('in_response_to', [])
+        # Prefer decoded utf8-strings in Python 2.7
+        if sys.version_info[0] < 3:
+            try:
+                text = text.decode('utf-8')
+            except UnicodeEncodeError:
+                pass
 
-        # The date and time that this statement was created at
-        self.created_at = kwargs.pop('created_at', datetime.now())
+        self.text = text
+        self.tags = kwargs.pop('tags', [])
+        self.in_response_to = kwargs.pop('in_response_to', [])
 
         self.extra_data = kwargs.pop('extra_data', {})
 
@@ -84,7 +105,7 @@ class Statement(object):
         """
         if not isinstance(response, Response):
             raise Statement.InvalidTypeException(
-                'A {} was recieved when a {} instance was expected'.format(
+                'A {} was received when a {} instance was expected'.format(
                     type(response),
                     type(Response(''))
                 )
@@ -139,7 +160,6 @@ class Statement(object):
 
         data['text'] = self.text
         data['in_response_to'] = []
-        data['created_at'] = self.created_at
         data['extra_data'] = self.extra_data
 
         for response in self.in_response_to:
@@ -157,8 +177,53 @@ class Statement(object):
 
     class InvalidTypeException(Exception):
 
-        def __init__(self, value='Recieved an unexpected value type.'):
+        def __init__(self, value='Received an unexpected value type.'):
             self.value = value
 
         def __str__(self):
             return repr(self.value)
+
+
+class Response(object):
+    """
+    A response represents an entity which response to a statement.
+    """
+
+    def __init__(self, text, **kwargs):
+        from datetime import datetime
+        from dateutil import parser as date_parser
+
+        self.text = text
+        self.created_at = kwargs.get('created_at', datetime.now())
+        self.occurrence = kwargs.get('occurrence', 1)
+
+        if not isinstance(self.created_at, datetime):
+            self.created_at = date_parser.parse(self.created_at)
+
+    def __str__(self):
+        return self.text
+
+    def __repr__(self):
+        return '<Response text:%s>' % (self.text)
+
+    def __hash__(self):
+        return hash(self.text)
+
+    def __eq__(self, other):
+        if not other:
+            return False
+
+        if isinstance(other, Response):
+            return self.text == other.text
+
+        return self.text == other
+
+    def serialize(self):
+        data = {}
+
+        data['text'] = self.text
+        data['created_at'] = self.created_at.isoformat()
+
+        data['occurrence'] = self.occurrence
+
+        return data

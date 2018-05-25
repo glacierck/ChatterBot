@@ -40,14 +40,15 @@ class ChatterBotResponseTestCase(ChatBotTestCase):
         """
         An input statement should be added to the recent response list.
         """
-        statement_text = 'Wow!'
-        response = self.chatbot.get_response(statement_text)
-        session = self.chatbot.conversation_sessions.get(
-            self.chatbot.default_session.id_string
+        statement = Statement(text='Wow!', in_response_to=[Response(text='Ok')])
+        response = self.chatbot.get_response(statement)
+        response_statement = self.chatbot.storage.get_latest_response(
+            self.chatbot.default_conversation_id
         )
 
-        self.assertIn(statement_text, session.conversation[0])
-        self.assertEqual(response, statement_text)
+        self.assertIsNotNone(response_statement)
+        self.assertEqual(statement.text, response_statement.text)
+        self.assertEqual(statement.text, response)
 
     def test_response_known(self):
         self.chatbot.storage.update(self.test_statement)
@@ -138,7 +139,7 @@ class ChatterBotResponseTestCase(ChatBotTestCase):
         statement = Statement('Many insects adopt a tripedal gait for rapid yet stable walking.')
         input_statement, response = self.chatbot.generate_response(
             statement,
-            self.chatbot.default_session.id
+            self.chatbot.default_conversation_id
         )
 
         self.assertEqual(input_statement, statement)
@@ -165,29 +166,3 @@ class ChatterBotResponseTestCase(ChatBotTestCase):
 
         self.assertEqual(response, self.test_statement.text)
         self.assertIsNone(statement_found)
-
-
-class ChatBotConfigFileTestCase(ChatBotTestCase):
-
-    def setUp(self):
-        super(ChatBotConfigFileTestCase, self).setUp()
-        import json
-        self.config_file_path = './test-config.json'
-        self.data = self.get_kwargs()
-        self.data['name'] = 'Config Test'
-
-        with open(self.config_file_path, 'w+') as config_file:
-            json.dump(self.data, config_file)
-
-    def tearDown(self):
-        super(ChatBotConfigFileTestCase, self).tearDown()
-        import os
-
-        if os.path.exists(self.config_file_path):
-            os.remove(self.config_file_path)
-
-    def test_read_from_config_file(self):
-        from chatterbot import ChatBot
-        self.chatbot = ChatBot.from_config(self.config_file_path)
-
-        self.assertEqual(self.chatbot.name, self.data['name'])

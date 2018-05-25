@@ -1,7 +1,14 @@
 from django.test import TestCase
 from chatterbot.storage import DjangoStorageAdapter
-from chatterbot.ext.django_chatterbot.models import Statement as StatementModel
-from chatterbot.ext.django_chatterbot.models import Response as ResponseModel
+from chatterbot.ext.django_chatterbot.factories import (
+    ConversationFactory,
+    StatementFactory,
+    ResponseFactory,
+)
+from chatterbot.ext.django_chatterbot.models import (
+    Statement as StatementModel,
+    Response as ResponseModel,
+)
 
 
 class DjangoAdapterTestCase(TestCase):
@@ -20,6 +27,65 @@ class DjangoAdapterTestCase(TestCase):
 
 
 class DjangoStorageAdapterTestCase(DjangoAdapterTestCase):
+
+    def test_get_latest_response_from_invalid_conversation_id(self):
+        response = self.adapter.get_latest_response(0)
+
+        self.assertIsNone(response)
+
+    def test_get_latest_response_from_zero_responses(self):
+        conversation = ConversationFactory()
+        response = self.adapter.get_latest_response(conversation.id)
+
+        self.assertIsNone(response)
+
+    def test_get_latest_response_from_one_responses(self):
+        conversation = ConversationFactory()
+        response_1 = ResponseFactory(
+            statement=StatementFactory(text='A'),
+            response=StatementFactory(text='B')
+        )
+
+        conversation.responses.add(response_1)
+        response = self.adapter.get_latest_response(conversation.id)
+
+        self.assertEqual(response_1.response, response)
+
+    def test_get_latest_response_from_two_responses(self):
+        conversation = ConversationFactory()
+        response_1 = ResponseFactory(
+            statement=StatementFactory(text='A'),
+            response=StatementFactory(text='B')
+        )
+        response_2 = ResponseFactory(
+            statement=StatementFactory(text='C'),
+            response=StatementFactory(text='D')
+        )
+
+        conversation.responses.add(response_1, response_2)
+        response = self.adapter.get_latest_response(conversation.id)
+
+        self.assertEqual(response_2.response, response)
+
+    def test_get_latest_response_from_three_responses(self):
+        conversation = ConversationFactory()
+        response_1 = ResponseFactory(
+            statement=StatementFactory(text='A'),
+            response=StatementFactory(text='B')
+        )
+        response_2 = ResponseFactory(
+            statement=StatementFactory(text='C'),
+            response=StatementFactory(text='D')
+        )
+        response_3 = ResponseFactory(
+            statement=StatementFactory(text='E'),
+            response=StatementFactory(text='F')
+        )
+
+        conversation.responses.add(response_1, response_2, response_3)
+        response = self.adapter.get_latest_response(conversation.id)
+
+        self.assertEqual(response_3.response, response)
 
     def test_count_returns_zero(self):
         """
@@ -133,7 +199,7 @@ class DjangoStorageAdapterTestCase(DjangoAdapterTestCase):
 
         response = self.adapter.find(statement.text)
 
-        self.assertEqual(response.responses.count(), 1)
+        self.assertEqual(response.responses.count(), 2)
         self.assertEqual(response.responses.first().occurrence, 2)
 
     def test_remove(self):
@@ -340,12 +406,12 @@ class DjangoOrderingTestCase(DjangoStorageAdapterTestCase):
         self.assertEqual(results[0], statement_a)
         self.assertEqual(results[1], statement_b)
 
-    def test_order_by_created_at(self):
+    def test_reverse_order_by_text(self):
         statement_a = StatementModel.objects.create(text='A is the first letter of the alphabet.')
         statement_b = StatementModel.objects.create(text='B is the second letter of the alphabet.')
 
-        results = self.adapter.filter(order_by='created_at')
+        results = self.adapter.filter(order_by='-text')
 
         self.assertEqual(len(results), 2)
-        self.assertEqual(results[0], statement_a)
-        self.assertEqual(results[1], statement_b)
+        self.assertEqual(results[1], statement_a)
+        self.assertEqual(results[0], statement_b)

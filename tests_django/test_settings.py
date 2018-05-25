@@ -23,6 +23,15 @@ CHATTERBOT = {
     'training_data': [
         'chatterbot.corpus.english.greetings'
     ],
+    'show_training_progress': False,
+    'logic_adapters': [
+        {
+            'import_path': 'chatterbot.logic.BestMatch',
+        },
+        {
+            'import_path': 'chatterbot.logic.MathematicalEvaluation',
+        }
+    ],
     'initialize': False
 }
 

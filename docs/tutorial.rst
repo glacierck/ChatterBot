@@ -10,8 +10,21 @@ Getting help
 If you’re having trouble with this tutorial, you can post a message on Gitter_
 to chat with other ChatterBot users who might be able to help.
 
+You can also `ask questions`_ on `Stack Overflow`_ under the ``chatterbot`` tag.
+
 If you believe that you have encountered an error in ChatterBot, please open a
 ticket on GitHub: https://github.com/gunthercox/ChatterBot/issues/new
+
+Installing ChatterBot
+=====================
+
+You can install ChatterBot on your system using Python's pip command.
+
+.. code-block:: bash
+
+   pip install chatterbot
+
+See :ref:`Installation` for alternative installation options.
 
 Creating your first chat bot
 ============================
@@ -118,7 +131,7 @@ we can exit the loop and stop the program when a user enters `ctrl+c`.
 
    while True:
        try:
-        bot_input = bot.get_response(None)
+           bot_input = bot.get_response(None)
 
        except(KeyboardInterrupt, EOFError, SystemExit):
            break
@@ -151,5 +164,7 @@ documentation for more details and examples.
 
 Up next: :doc:`./examples`
 
-.. _Gitter: https://gitter.im/chatter_bot/Lobby
+.. _Gitter: https://gitter.im/chatterbot/Lobby
 .. _SQLite: https://www.sqlite.org/
+.. _`Stack Overflow`: https://stackoverflow.com/questions/tagged/chatterbot
+.. _`ask questions`: https://stackoverflow.com/questions/ask

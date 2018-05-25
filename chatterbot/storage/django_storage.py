@@ -1,4 +1,5 @@
 from chatterbot.storage import StorageAdapter
+from chatterbot import constants
 
 
 class DjangoStorageAdapter(StorageAdapter):
@@ -11,16 +12,33 @@ class DjangoStorageAdapter(StorageAdapter):
         super(DjangoStorageAdapter, self).__init__(**kwargs)
 
         self.adapter_supports_queries = False
-        self.django_app_name = kwargs.get('django_app_name', 'django_chatterbot')
+        self.django_app_name = kwargs.get(
+            'django_app_name',
+            constants.DEFAULT_DJANGO_APP_NAME
+        )
+
+    def get_statement_model(self):
+        from django.apps import apps
+        return apps.get_model(self.django_app_name, 'Statement')
+
+    def get_response_model(self):
+        from django.apps import apps
+        return apps.get_model(self.django_app_name, 'Response')
+
+    def get_conversation_model(self):
+        from django.apps import apps
+        return apps.get_model(self.django_app_name, 'Conversation')
+
+    def get_tag_model(self):
+        from django.apps import apps
+        return apps.get_model(self.django_app_name, 'Tag')
 
     def count(self):
-        from django.apps import apps
-        Statement = apps.get_model(self.django_app_name, 'Statement')
+        Statement = self.get_model('statement')
         return Statement.objects.count()
 
     def find(self, statement_text):
-        from django.apps import apps
-        Statement = apps.get_model(self.django_app_name, 'Statement')
+        Statement = self.get_model('statement')
         try:
             return Statement.objects.get(text=statement_text)
         except Statement.DoesNotExist as e:
@@ -32,9 +50,8 @@ class DjangoStorageAdapter(StorageAdapter):
         Returns a list of statements in the database
         that match the parameters specified.
         """
-        from django.apps import apps
-        Statement = apps.get_model(self.django_app_name, 'Statement')
         from django.db.models import Q
+        Statement = self.get_model('statement')
 
         order = kwargs.pop('order_by', None)
 
@@ -80,9 +97,8 @@ class DjangoStorageAdapter(StorageAdapter):
         """
         Update the provided statement.
         """
-        from django.apps import apps
-        Statement = apps.get_model(self.django_app_name, 'Statement')
-        Response = apps.get_model(self.django_app_name, 'Response')
+        Statement = self.get_model('statement')
+        Response = self.get_model('response')
 
         response_statement_cache = statement.response_statement_cache
 
@@ -98,14 +114,10 @@ class DjangoStorageAdapter(StorageAdapter):
             response_statement.extra_data = getattr(_response_statement, 'extra_data', '')
             response_statement.save()
 
-            response, created = Response.objects.get_or_create(
+            Response.objects.create(
                 statement=response_statement,
                 response=statement
             )
-
-            if not created:
-                response.occurrence += 1
-                response.save()
 
         return statement
 
@@ -113,8 +125,7 @@ class DjangoStorageAdapter(StorageAdapter):
         """
         Returns a random statement from the database
         """
-        from django.apps import apps
-        Statement = apps.get_model(self.django_app_name, 'Statement')
+        Statement = self.get_model('statement')
         return Statement.objects.order_by('?').first()
 
     def remove(self, statement_text):
@@ -123,11 +134,10 @@ class DjangoStorageAdapter(StorageAdapter):
         Removes any responses from statements if the response text matches the
         input text.
         """
-        from django.apps import apps
         from django.db.models import Q
 
-        Statement = apps.get_model(self.django_app_name, 'Statement')
-        Response = apps.get_model(self.django_app_name, 'Response')
+        Statement = self.get_model('statement')
+        Response = self.get_model('response')
 
         statements = Statement.objects.filter(text=statement_text)
 
@@ -138,19 +148,62 @@ class DjangoStorageAdapter(StorageAdapter):
         responses.delete()
         statements.delete()
 
+    def get_latest_response(self, conversation_id):
+        """
+        Returns the latest response in a conversation if it exists.
+        Returns None if a matching conversation cannot be found.
+        """
+        Response = self.get_model('response')
+
+        response = Response.objects.filter(
+            conversations__id=conversation_id
+        ).order_by(
+            'created_at'
+        ).last()
+
+        if not response:
+            return None
+
+        return response.response
+
+    def create_conversation(self):
+        """
+        Create a new conversation.
+        """
+        Conversation = self.get_model('conversation')
+        conversation = Conversation.objects.create()
+        return conversation.id
+
+    def add_to_conversation(self, conversation_id, statement, response):
+        """
+        Add the statement and response to the conversation.
+        """
+        Statement = self.get_model('statement')
+        Response = self.get_model('response')
+
+        first_statement, created = Statement.objects.get_or_create(text=statement.text)
+        first_response, created = Statement.objects.get_or_create(text=response.text)
+
+        response = Response.objects.create(
+            statement=first_statement,
+            response=first_response
+        )
+
+        response.conversations.add(conversation_id)
+
     def drop(self):
         """
         Remove all data from the database.
         """
-        from django.apps import apps
-
-        Statement = apps.get_model(self.django_app_name, 'Statement')
-        Response = apps.get_model(self.django_app_name, 'Response')
-        Conversation = apps.get_model(self.django_app_name, 'Conversation')
+        Statement = self.get_model('statement')
+        Response = self.get_model('response')
+        Conversation = self.get_model('conversation')
+        Tag = self.get_model('tag')
 
         Statement.objects.all().delete()
         Response.objects.all().delete()
         Conversation.objects.all().delete()
+        Tag.objects.all().delete()
 
     def get_response_statements(self):
         """
@@ -159,9 +212,8 @@ class DjangoStorageAdapter(StorageAdapter):
         in_response_to field. Otherwise, the logic adapter may find a closest
         matching statement that does not have a known response.
         """
-        from django.apps import apps
-        Statement = apps.get_model(self.django_app_name, 'Statement')
-        Response = apps.get_model(self.django_app_name, 'Response')
+        Statement = self.get_model('statement')
+        Response = self.get_model('response')
 
         responses = Response.objects.all()
 

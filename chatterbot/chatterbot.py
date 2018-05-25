@@ -12,13 +12,20 @@ class ChatBot(object):
     """
 
     def __init__(self, name, **kwargs):
-        from .conversation.session import ConversationSessionManager
         from .logic import MultiLogicAdapter
 
         self.name = name
         kwargs['name'] = name
+        kwargs['chatbot'] = self
+
+        self.default_session = None
 
         storage_adapter = kwargs.get('storage_adapter', 'chatterbot.storage.SQLStorageAdapter')
+
+        # These are logic adapters that are required for normal operation
+        system_logic_adapters = kwargs.get('system_logic_adapters', (
+            'chatterbot.logic.NoKnowledgeAdapter',
+        ))
 
         logic_adapters = kwargs.get('logic_adapters', [
             'chatterbot.logic.BestMatch'
@@ -42,9 +49,10 @@ class ChatBot(object):
         self.filters = tuple([utils.import_module(F)() for F in filters])
 
         # Add required system logic adapter
-        self.logic.system_adapters.append(
-            utils.initialize_class('chatterbot.logic.NoKnowledgeAdapter', **kwargs)
-        )
+        for system_logic_adapter in system_logic_adapters:
+            self.logic.system_adapters.append(
+                utils.initialize_class(system_logic_adapter, **kwargs)
+            )
 
         for adapter in logic_adapters:
             self.logic.add_adapter(adapter, **kwargs)
@@ -72,8 +80,7 @@ class ChatBot(object):
         self.trainer = TrainerClass(self.storage, **kwargs)
         self.training_data = kwargs.get('training_data')
 
-        self.conversation_sessions = ConversationSessionManager()
-        self.default_session = self.conversation_sessions.new()
+        self.default_conversation_id = None
 
         self.logger = kwargs.get('logger', logging.getLogger(__name__))
 
@@ -89,16 +96,19 @@ class ChatBot(object):
         """
         self.logic.initialize()
 
-    def get_response(self, input_item, session_id=None):
+    def get_response(self, input_item, conversation_id=None):
         """
         Return the bot's response based on the input.
 
         :param input_item: An input value.
+        :param conversation_id: The id of a conversation.
         :returns: A response to the input.
         :rtype: Statement
         """
-        if not session_id:
-            session_id = str(self.default_session.uuid)
+        if not conversation_id:
+            if not self.default_conversation_id:
+                self.default_conversation_id = self.storage.create_conversation()
+            conversation_id = self.default_conversation_id
 
         input_statement = self.input.process_input_statement(input_item)
 
@@ -106,24 +116,23 @@ class ChatBot(object):
         for preprocessor in self.preprocessors:
             input_statement = preprocessor(self, input_statement)
 
-        statement, response = self.generate_response(input_statement, session_id)
+        statement, response = self.generate_response(input_statement, conversation_id)
 
         # Learn that the user's input was a valid response to the chat bot's previous output
-        previous_statement = self.conversation_sessions.get(
-            session_id
-        ).conversation.get_last_response_statement()
-        self.learn_response(statement, previous_statement)
+        previous_statement = self.storage.get_latest_response(conversation_id)
 
-        self.conversation_sessions.update(session_id, (statement, response, ))
+        if not self.read_only:
+            self.learn_response(statement, previous_statement)
+            self.storage.add_to_conversation(conversation_id, statement, response)
 
         # Process the response output with the output adapter
-        return self.output.process_response(response, session_id)
+        return self.output.process_response(response, conversation_id)
 
-    def generate_response(self, input_statement, session_id):
+    def generate_response(self, input_statement, conversation_id):
         """
         Return a response based on a given input statement.
         """
-        self.storage.generate_base_query(self, session_id)
+        self.storage.generate_base_query(self, conversation_id)
 
         # Select a response to the input statement
         response = self.logic.process(input_statement)
@@ -146,8 +155,7 @@ class ChatBot(object):
             ))
 
         # Save the statement after selecting a response
-        if not self.read_only:
-            self.storage.update(statement)
+        self.storage.update(statement)
 
     def set_trainer(self, training_class, **kwargs):
         """
@@ -158,6 +166,9 @@ class ChatBot(object):
 
         :param \**kwargs: Any parameters that should be passed to the training class.
         """
+        if 'chatbot' not in kwargs:
+            kwargs['chatbot'] = self
+
         self.trainer = training_class(self.storage, **kwargs)
 
     @property
@@ -166,16 +177,3 @@ class ChatBot(object):
         Proxy method to the chat bot's trainer class.
         """
         return self.trainer.train
-
-    @classmethod
-    def from_config(cls, config_file_path):
-        """
-        Create a new ChatBot instance from a JSON config file.
-        """
-        import json
-        with open(config_file_path, 'r') as config_file:
-            data = json.load(config_file)
-
-        name = data.pop('name')
-
-        return ChatBot(name, **data)
